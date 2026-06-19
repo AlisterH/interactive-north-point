@@ -1,9 +1,31 @@
+
+"""
+/***************************************************************************
+ Interactive North Point
+                                 A QGIS plugin
+ Interactive compass rotation tool
+                              -------------------
+        begin                : 2026-06-19
+        copyright            : (C) 2026 by Alister Hood
+        email                : alister.hood@gmail.com
+ ***************************************************************************/
+
+/***************************************************************************
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ ***************************************************************************/
+"""
+
+
 from qgis.PyQt.QtWidgets import QDial, QFrame, QVBoxLayout, QPushButton
-from qgis.PyQt.QtCore import Qt, QEvent, QByteArray, QRectF, QObject, QSize, QTimer
+from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer
 from qgis.PyQt.QtGui import QPainter, QIcon
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.core import QgsProject
-from qgis.utils import iface
 import math
 import os
 
@@ -17,53 +39,15 @@ class SvgCompassDial(QDial):
     Value 0   → north arrow points up   (map is north-up)
     Value 90  → north arrow points left (map rotated 90° clockwise)
     etc.
-
-    The SVG is defined inline so the class has no external file dependency.
-    It consists of:
-      - A white background disc
-      - A two-tone needle: red (north) and dark-grey (south)
-      - A small centre boss
-      - A bold "N" label that rotates with the needle
     """
 
-    # Inline SVG — authored in a 100×100 viewBox so it scales cleanly to
-    # whatever fixed size the parent sets via setFixedSize().
-    _SVG_TEMPLATE = """\
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Drop shadow -->
-  <circle cx="50" cy="51" r="44" fill="rgba(0,0,0,0.08)"/>
-  <!-- Background disc -->
-  <circle cx="50" cy="50" r="44" fill="white"/>
-  <!-- Bearing ring -->
-  <circle cx="50" cy="50" r="44" fill="none" stroke="#cccccc" stroke-width="1.5"/>
-
-  <!-- Compass needle, centred on origin for clean rotation -->
-  <!-- North half: red -->
-  <polygon points="50,16 55,50 50,46 45,50"
-           fill="#cc2222"/>
-  <!-- South half: dark grey -->
-  <polygon points="50,84 55,50 50,54 45,50"
-           fill="#444444"/>
-
-  <!-- Centre boss -->
-  <circle cx="50" cy="50" r="4" fill="#333333"/>
-  <circle cx="50" cy="50" r="2" fill="white"/>
-
-  <!-- "N" label, positioned above needle tip and rotated with it -->
-  <text x="50" y="16"
-        text-anchor="middle"
-        dominant-baseline="auto"
-        font-family="sans-serif"
-        font-size="9"
-        font-weight="bold"
-        fill="#cc2222">N</text>
-</svg>"""
-
-    def __init__(self, parent=None):
+    def __init__(self, canvas, parent=None):
         super().__init__(parent)
+        self.canvas = canvas
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
-        self._renderer = QSvgRenderer(QByteArray(self._SVG_TEMPLATE.encode()))
+        svg_path = os.path.join(plugin_dir, "north-point.svg")
+        self._renderer = QSvgRenderer(svg_path)
 
     def paintEvent(self, event):
         """
@@ -98,14 +82,13 @@ class SvgCompassDial(QDial):
             # ✅ Reset to north
             self.setValue(0)
             event.accept()
-            return
 
-        if event.button() == Qt.LeftButton:
-            self._is_interacting = True
+        elif event.button() == Qt.LeftButton:
             self._set_value_from_pos(event.pos())
             event.accept()
+
         else:
-            super().mousePressEvent(event)
+            event.ignore()
 
 
     def mouseMoveEvent(self, event):
@@ -113,17 +96,16 @@ class SvgCompassDial(QDial):
             self._set_value_from_pos(event.pos())
             event.accept()
         else:
-            super().mouseMoveEvent(event)
+            event.ignore()
 
 
     def mouseReleaseEvent(self, event):
         if event.button() in (Qt.LeftButton, Qt.RightButton):
-            self._is_interacting = False
             # actually re-render rather than just rotating the already rendered map
-            iface.mapCanvas().refresh()
+            self.canvas.refresh()
             event.accept()
         else:
-            super().mouseReleaseEvent(event)
+            event.ignore()
 
     def _set_value_from_pos(self, pos):
         cx = self.width() / 2
@@ -257,7 +239,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         layout = QVBoxLayout(self.container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.dial = SvgCompassDial()
+        self.dial = SvgCompassDial(self.canvas, self.container)
         self.dial.setToolTip("Rotate map / Right-click to reset north")
         self.dial.setMinimum(0)
         self.dial.setMaximum(359)
