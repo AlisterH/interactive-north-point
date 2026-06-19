@@ -9,5 +9,5 @@ qgisMinimumVersion=3.0
 supportsQt6=yes
 author=Alister Hood
 email=alister.hood@gmail.com
-repository=https://github.com/AlisterH/scripts/tree/master/clickable-north-point
+repository=https://github.com/AlisterH/interactive-north-point
 icon=icon.svg
