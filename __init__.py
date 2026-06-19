@@ -81,7 +81,7 @@ class SvgCompassDial(QDial):
 
         # Centre the drawing area and make it square
         painter.translate(w / 2, h / 2)
-        painter.rotate(self.value())          # rotate by bearing (0–359°)
+        painter.rotate((360 - self.value()) % 360)          # rotate by bearing (0–359°)
         painter.translate(-side / 2, -side / 2)
 
         # Render the SVG into the square bounding box
@@ -131,7 +131,7 @@ class SvgCompassDial(QDial):
         if angle < 0:
             angle += 360
 
-        self.setValue(int(angle))
+        self.setValue(int((360 - angle) % 360))
 
 
 class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEventFilter
