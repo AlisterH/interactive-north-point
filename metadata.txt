@@ -4,7 +4,7 @@ description=Clickable north point on map canvas for adjusting map rotation.
 about=Toggle display of north point on map canvas using status bar button.
 	Left-click map canvas widget to set north direction.
 	Right-click to reset.
-version=1.0
+version=1.1
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 author=Alister Hood
