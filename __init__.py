@@ -31,6 +31,13 @@ import os
 
 plugin_dir = os.path.dirname(__file__)
 
+try:
+    QtLeftButton = Qt.MouseButton.LeftButton #QT6
+    QtRightButton = Qt.MouseButton.RightButton
+except AttributeError:
+    QtLeftButton = Qt.LeftButton #QT5
+    QtRightButton = Qt.RightButton
+
 class SvgCompassDial(QDial):
     """
     A QDial subclass that discards Qt's default knob rendering and instead
@@ -62,7 +69,12 @@ class SvgCompassDial(QDial):
         simply use the dial value directly as the rotation angle.
         """
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        try:
+            hint = QPainter.RenderHint.Antialiasing #QT6
+        except AttributeError:
+            hint = QPainter.Antialiasing #QT5
+
+        painter.setRenderHint(hint)
 
         w, h = self.width(), self.height()
         side = min(w, h)
@@ -78,12 +90,12 @@ class SvgCompassDial(QDial):
         painter.end()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton:
+        if event.button() == QtRightButton:
             # ✅ Reset to north
             self.setValue(0)
             event.accept()
 
-        elif event.button() == Qt.LeftButton:
+        elif event.button() == QtLeftButton:
             self._set_value_from_pos(event.pos())
             event.accept()
 
@@ -92,7 +104,7 @@ class SvgCompassDial(QDial):
 
 
     def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.LeftButton:
+        if event.buttons() & QtLeftButton:
             self._set_value_from_pos(event.pos())
             event.accept()
         else:
@@ -100,7 +112,7 @@ class SvgCompassDial(QDial):
 
 
     def mouseReleaseEvent(self, event):
-        if event.button() in (Qt.LeftButton, Qt.RightButton):
+        if event.button() in (QtLeftButton, QtRightButton):
             # actually re-render rather than just rotating the already rendered map
             self.canvas.refresh()
             event.accept()
@@ -234,6 +246,8 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         if self.container and self.container.isVisible():
             return
 
+        """ AI suggests it would be safer to add this (if in future QGIS replaces the canvas object)"""
+        # self.canvas = self.iface.mapCanvas()
         self.container = QFrame(self.canvas)
 
         layout = QVBoxLayout(self.container)
@@ -245,7 +259,8 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         self.dial.setMaximum(359)
         self.dial.setWrapping(True)
         self.dial.setFixedSize(100, 100)
-        self.dial.setAttribute(Qt.WA_TranslucentBackground)
+        """ fails in QT6 build, but do we need it? """
+        # self.dial.setAttribute(Qt.WA_TranslucentBackground)
         self.dial.setAutoFillBackground(False)
 
         # Initial value sync
@@ -289,7 +304,13 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
 
     def eventFilter(self, obj, event):
         """Intercept resize events on the map canvas to reposition our widget."""
-        if obj is self.canvas and event.type() == QEvent.Resize:
+        try:
+            resize_event = QEvent.Type.Resize #QT6
+        except AttributeError:
+            resize_event = QEvent.Resize #QT5
+
+        if obj is self.canvas and event.type() == resize_event:
+
             self.position_widget()
         return False  # Always let Qt continue normal event processing
 
