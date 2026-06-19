@@ -1,0 +1,13 @@
+[general]
+name=Interactive North Point
+description=Clickable north point on map canvas for adjusting map rotation.
+about=Toggle display of north point on map canvas using status bar button.
+	Left-click map canvas widget to set north direction.
+	Right-click to reset.
+version=1.0
+qgisMinimumVersion=3.0
+supportsQt6=yes
+author=Alister Hood
+email=alister.hood@gmail.com
+repository=https://github.com/AlisterH/scripts/tree/master/clickable-north-point
+icon=icon.svg
