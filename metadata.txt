@@ -6,8 +6,10 @@ about=Toggle display of north point on map canvas using status bar button.
 	Right-click to reset.
 version=1.0
 qgisMinimumVersion=3.0
-supportsQt6=yes
+qgisMaximumVersion=4.99
 author=Alister Hood
 email=alister.hood@gmail.com
-repository=https://github.com/AlisterH/interactive-north-point
 icon=icon.svg
+homepage=https://github.com/AlisterH/interactive-north-point
+repository=https://github.com/AlisterH/interactive-north-point
+tracker=https://github.com/AlisterH/interactive-north-point/issues
