@@ -21,7 +21,7 @@
 """
 
 
-from qgis.PyQt.QtWidgets import QDial, QFrame, QVBoxLayout, QPushButton
+from qgis.PyQt.QtWidgets import QDial, QFrame, QVBoxLayout, QPushButton, QMenu, QAction
 from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer
 from qgis.PyQt.QtGui import QPainter, QIcon
 from qgis.PyQt.QtSvg import QSvgRenderer
@@ -30,6 +30,7 @@ import math
 import os
 
 plugin_dir = os.path.dirname(__file__)
+SNAP_OPTIONS = [5, 10, 15, 30, 45, 90]
 
 try:
     QtLeftButton = Qt.MouseButton.LeftButton #QT6
@@ -148,7 +149,8 @@ class SvgCompassDial(QDial):
             # wrap to [-180, 180] for smooth snapping
             delta = (delta + 180) % 360 - 180
 
-            snapped_delta = round(delta / 5) * 5
+            snap = getattr(self, "snap_increment", 15) # 15 is just a default in case the increment somehow isn't set.
+            snapped_delta = round(delta / snap) * snap
             value = (self.snap_origin + snapped_delta) % 360
 
         self.setValue(int(value))
@@ -158,6 +160,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         super().__init__()
         self.iface = iface
         self.canvas = self.iface.mapCanvas()
+        self.snap_increment = 15  # default
 
         # References to our UI elements
         self.container = None
@@ -180,8 +183,12 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         self.status_button.setIconSize(QSize(18, 18))   # tweak if needed
         self.status_button.setFixedSize(24, 24)         # nice compact square
 
-        self.status_button.setToolTip("Toggle the interactive north point")
+        self.status_button.setToolTip("Toggle the interactive north point / Right-click to select snapping mode increment")
         self.status_button.toggled.connect(self.toggle_widget)
+        
+        # Implement context menu to configure snapping mode snap increment
+        self.status_button.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.status_button.customContextMenuRequested.connect(self.show_snap_menu)
 
         # 2. Inject button into QGIS Status Bar
         self.iface.statusBarIface().addPermanentWidget(self.status_button)
@@ -273,7 +280,8 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.dial = SvgCompassDial(self.canvas, self.container)
-        self.dial.setToolTip("Rotate map / Right-click to reset north")
+        self.dial.snap_increment = self.snap_increment
+        self.dial.setToolTip("Rotate map / Right-click to reset to 0° / Hold shift to rotate by regular increment")
         self.dial.setMinimum(0)
         self.dial.setMaximum(359)
         self.dial.setWrapping(True)
@@ -316,6 +324,26 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
             self.container.deleteLater()
             self.container = None
             self.dial = None
+
+    def show_snap_menu(self, pos):
+        menu = QMenu(self.status_button)
+
+        for angle in SNAP_OPTIONS:
+            action = QAction(f"{angle}°", menu)
+            action.setCheckable(True)
+            action.setChecked(angle == self.snap_increment)
+
+            # capture correctly in lambda
+            action.triggered.connect(lambda checked, a=angle: self.set_snap_increment(a))
+
+            menu.addAction(action)
+
+        menu.exec_(self.status_button.mapToGlobal(pos))
+
+    def set_snap_increment(self, value):
+        self.snap_increment = value
+        if self.dial:
+            self.dial.snap_increment = value
 
     # ------------------------------------------------------------------ #
     # QObject event filter — handles canvas resize without monkey-patching #
