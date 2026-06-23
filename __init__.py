@@ -51,6 +51,7 @@ class SvgCompassDial(QDial):
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
         self.canvas = canvas
+        self.snap_origin = None
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
         svg_path = os.path.join(plugin_dir, "north-point.svg")
@@ -96,30 +97,37 @@ class SvgCompassDial(QDial):
             event.accept()
 
         elif event.button() == QtLeftButton:
-            self._set_value_from_pos(event.pos())
+            modifiers = event.modifiers()
+
+            # ✅ starting point for snapping
+            if modifiers & Qt.ShiftModifier:
+                self.snap_origin = self.value()
+            else:
+                self.snap_origin = None
+
+            self._set_value_from_pos(event.pos(), modifiers)
             event.accept()
 
         else:
             event.ignore()
-
 
     def mouseMoveEvent(self, event):
         if event.buttons() & QtLeftButton:
-            self._set_value_from_pos(event.pos())
+            self._set_value_from_pos(event.pos(), event.modifiers())
             event.accept()
         else:
             event.ignore()
 
-
     def mouseReleaseEvent(self, event):
         if event.button() in (QtLeftButton, QtRightButton):
+            self.snap_origin = None   # ✅ reset
             # actually re-render rather than just rotating the already rendered map
             self.canvas.refresh()
             event.accept()
         else:
             event.ignore()
 
-    def _set_value_from_pos(self, pos):
+    def _set_value_from_pos(self, pos, modifiers):
         cx = self.width() / 2
         cy = self.height() / 2
 
@@ -130,9 +138,20 @@ class SvgCompassDial(QDial):
 
         if angle < 0:
             angle += 360
+        
+        value = (360 - angle) % 360
 
-        self.setValue(int((360 - angle) % 360))
+        # ✅ SHIFT snapping relative to starting angle
+        if modifiers & Qt.ShiftModifier and self.snap_origin is not None:
+            delta = value - self.snap_origin
 
+            # wrap to [-180, 180] for smooth snapping
+            delta = (delta + 180) % 360 - 180
+
+            snapped_delta = round(delta / 5) * 5
+            value = (self.snap_origin + snapped_delta) % 360
+
+        self.setValue(int(value))
 
 class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEventFilter
     def __init__(self, iface):
@@ -335,7 +354,6 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
             self.container.move(
                 self.canvas.width() - self.container.width() - 25, 25
             )
-
 
 def classFactory(iface):
     """QGIS entry point — called by QGIS when the plugin is loaded."""
