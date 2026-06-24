@@ -2,9 +2,9 @@
 name=Interactive North Point
 description=Clickable north point on map canvas for adjusting map rotation.
 about=Toggle display of north point on map canvas using status bar button.
-	Click or drag the map canvas widget with left mouse button to set north direction.
+	To rotate map: click or drag the north point with left mouse button.
 	Snapping mode: hold down shift to adjust by regular increments.  Right-click status bar button to select increment.
-	Reset: right-click to reset rotation to 0°.
+	Reset: right-click the north point to reset rotation to 0°.
 version=1.2
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99

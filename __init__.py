@@ -21,8 +21,8 @@
 """
 
 
-from qgis.PyQt.QtWidgets import QDial, QFrame, QVBoxLayout, QPushButton, QMenu, QAction
-from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer
+from qgis.PyQt.QtWidgets import QWidget, QFrame, QVBoxLayout, QToolButton, QMenu, QAction
+from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QPainter, QIcon
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.core import QgsProject
@@ -30,7 +30,7 @@ import math
 import os
 
 plugin_dir = os.path.dirname(__file__)
-SNAP_OPTIONS = [5, 10, 15, 30, 45, 90]
+SNAP_OPTIONS = [1, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0]
 
 try:
     QtLeftButton = Qt.MouseButton.LeftButton #QT6
@@ -39,73 +39,69 @@ except AttributeError:
     QtLeftButton = Qt.LeftButton #QT5
     QtRightButton = Qt.RightButton
 
-class SvgCompassDial(QDial):
-    """
-    A QDial subclass that discards Qt's default knob rendering and instead
-    paints an SVG compass rose that rotates to match the current dial value.
 
-    Value 0   → north arrow points up   (map is north-up)
-    Value 90  → north arrow points left (map rotated 90° clockwise)
-    etc.
-    """
+class SvgCompassDial(QWidget):
+    valueChanged = pyqtSignal(float)
 
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
+
         self.canvas = canvas
+        self.value = 0.0   # ✅ float instead of int
         self.snap_origin = None
+        self.snap_increment = 22.5
+
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
         svg_path = os.path.join(plugin_dir, "north-point.svg")
         self._renderer = QSvgRenderer(svg_path)
 
+    # ------------------------------------------------------------- #
+    # Painting
+    # ------------------------------------------------------------- #
+
     def paintEvent(self, event):
-        """
-        Completely replaces QDial's native rendering.
-
-        Rotation logic
-        --------------
-        dial value 0   → needle points up   → rotate(0°)
-        dial value 90  → needle points right → rotate(90°)
-
-        Qt's painter rotation is clockwise, matching compass bearings, so we
-        simply use the dial value directly as the rotation angle.
-        """
         painter = QPainter(self)
+
         try:
-            hint = QPainter.RenderHint.Antialiasing #QT6
+            hint = QPainter.RenderHint.Antialiasing # QT6
         except AttributeError:
-            hint = QPainter.Antialiasing #QT5
+            hint = QPainter.Antialiasing # QT5
 
         painter.setRenderHint(hint)
 
         w, h = self.width(), self.height()
         side = min(w, h)
 
-        # Centre the drawing area and make it square
         painter.translate(w / 2, h / 2)
-        painter.rotate((360 - self.value()) % 360)          # rotate by bearing (0–359°)
+
+        # ✅ use float value directly
+        painter.rotate((-self.value) % 360)
+
         painter.translate(-side / 2, -side / 2)
 
-        # Render the SVG into the square bounding box
         self._renderer.render(painter, QRectF(0, 0, side, side))
-
         painter.end()
+
+    # ------------------------------------------------------------- #
+    # Input handling
+    # ------------------------------------------------------------- #
 
     def mousePressEvent(self, event):
         if event.button() == QtRightButton:
-            # ✅ Reset to north
-            self.setValue(0)
+            self.setValue(0.0)
             event.accept()
 
-        elif event.button() == QtLeftButton:
-            modifiers = event.modifiers()
+        if event.button() == QtLeftButton:
+            modifiers = event.modifiers()  # ✅ FIX: define it
 
-            # ✅ starting point for snapping
+            # ✅ capture origin BEFORE any movement happens
             if modifiers & Qt.ShiftModifier:
-                self.snap_origin = self.value()
+                self.snap_origin = self.value
             else:
                 self.snap_origin = None
 
+            # now apply movement
             self._set_value_from_pos(event.pos(), modifiers)
             event.accept()
 
@@ -121,39 +117,51 @@ class SvgCompassDial(QDial):
 
     def mouseReleaseEvent(self, event):
         if event.button() in (QtLeftButton, QtRightButton):
-            self.snap_origin = None   # ✅ reset
-            # actually re-render rather than just rotating the already rendered map
-            self.canvas.refresh()
+            self.snap_origin = None
+            self.canvas.refresh() # actually re-render rather than just rotating the already rendered map
             event.accept()
         else:
             event.ignore()
+
+    # ------------------------------------------------------------- #
+    # Value handling (float)
+    # ------------------------------------------------------------- #
+
+    def setValue(self, v):
+        v = v % 360.0
+        if abs(self.value - v) < 0.001:
+            return
+
+        self.value = v
+        self.valueChanged.emit(self.value)
+        self.update()
 
     def _set_value_from_pos(self, pos, modifiers):
         cx = self.width() / 2
         cy = self.height() / 2
 
         dx = pos.x() - cx
-        dy = cy - pos.y()  # inverted Y axis (Qt screen coords)
+        dy = cy - pos.y()
 
-        angle = math.degrees(math.atan2(dx, dy))
+        angle = math.degrees(math.atan2(dx, dy)) % 360
 
-        if angle < 0:
-            angle += 360
-        
-        value = (360 - angle) % 360
+        value = (-angle) % 360
 
-        # ✅ SHIFT snapping relative to starting angle
+        # ✅ relative snapping (float)
         if modifiers & Qt.ShiftModifier and self.snap_origin is not None:
+
+            snap = self.snap_increment
+
             delta = value - self.snap_origin
 
-            # wrap to [-180, 180] for smooth snapping
+            # keep delta continuous across 0°
             delta = (delta + 180) % 360 - 180
 
-            snap = getattr(self, "snap_increment", 15) # 15 is just a default in case the increment somehow isn't set.
             snapped_delta = round(delta / snap) * snap
+
             value = (self.snap_origin + snapped_delta) % 360
 
-        self.setValue(int(value))
+        self.setValue(value)
 
 class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEventFilter
     def __init__(self, iface):
@@ -171,17 +179,14 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         """Called when QGIS initializes or the plugin is turned on."""
         # 1. Create the toggle button for the status bar
 
-        self.status_button = QPushButton()
+        self.status_button = QToolButton()
         self.status_button.setCheckable(True)
         self.status_button.setEnabled(False)
+        self.status_button.setAutoRaise(True)  # toolbar-style
 
         # ✅ Load your SVG
         icon_path = os.path.join(plugin_dir, "icon.svg")
         self.status_button.setIcon(QIcon(icon_path))
-
-        # ✅ Make it a clean icon button
-        self.status_button.setIconSize(QSize(18, 18))   # tweak if needed
-        self.status_button.setFixedSize(24, 24)         # nice compact square
 
         self.status_button.setToolTip("Toggle the interactive north point / Right-click to select snapping mode increment")
         self.status_button.toggled.connect(self.toggle_widget)
@@ -282,17 +287,14 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         self.dial = SvgCompassDial(self.canvas, self.container)
         self.dial.snap_increment = self.snap_increment
         self.dial.setToolTip("Rotate map / Right-click to reset to 0° / Hold shift to rotate by regular increment")
-        self.dial.setMinimum(0)
-        self.dial.setMaximum(359)
-        self.dial.setWrapping(True)
         self.dial.setFixedSize(100, 100)
         """ fails in QT6 build, but do we need it? """
         # self.dial.setAttribute(Qt.WA_TranslucentBackground)
         self.dial.setAutoFillBackground(False)
 
         # Initial value sync
-        current_rotation = round(self.canvas.rotation())
-        self.dial.setValue((360 - current_rotation) % 360)
+        current_rotation = self.canvas.rotation()
+        self.dial.setValue((-current_rotation) % 360.0)
         layout.addWidget(self.dial)
 
         # Link signals
@@ -328,14 +330,23 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
     def show_snap_menu(self, pos):
         menu = QMenu(self.status_button)
 
+        info = QAction("Rotation increment for snap mode (enabled by holding shift)", menu)
+        info.setEnabled(False)
+        menu.addAction(info)
+
+        menu.addSeparator()
+
         for angle in SNAP_OPTIONS:
-            action = QAction(f"{angle}°", menu)
+            if angle == 1:
+                label = "1° (snap to nearest whole degree)"
+            else:
+                label = f"{angle}°"
+
+            action = QAction(label, menu)
             action.setCheckable(True)
             action.setChecked(angle == self.snap_increment)
 
-            # capture correctly in lambda
             action.triggered.connect(lambda checked, a=angle: self.set_snap_increment(a))
-
             menu.addAction(action)
 
         menu.exec_(self.status_button.mapToGlobal(pos))
@@ -367,14 +378,13 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
 
     def rotate_map(self, value):
         """Translates dial position to canvas rotation."""
-        self.canvas.setRotation((360 - value) % 360)
+        self.canvas.setRotation((-value) % 360)
 
     def update_dial_from_canvas(self):
         """Keeps the dial in sync when the canvas is rotated by other means."""
         if self.container and self.dial:
             self.dial.blockSignals(True)
-            c_rot = round(self.canvas.rotation())
-            self.dial.setValue((360 - c_rot) % 360)
+            self.dial.setValue((-self.canvas.rotation()) % 360.0)
             self.dial.blockSignals(False)
 
     def position_widget(self):
