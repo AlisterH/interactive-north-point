@@ -23,13 +23,16 @@
 
 from qgis.PyQt.QtWidgets import QWidget, QFrame, QVBoxLayout, QToolButton, QMenu, QAction
 from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer, pyqtSignal
-from qgis.PyQt.QtGui import QPainter, QIcon
+from qgis.PyQt.QtGui import QPainter, QIcon, QCursor, QPixmap
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.core import QgsProject
 import math
 import os
 
 plugin_dir = os.path.dirname(__file__)
+cursor_path = os.path.join(plugin_dir, "cursor.png")
+icon_path = os.path.join(plugin_dir, "icon.svg")
+svg_path = os.path.join(plugin_dir, "north-point.svg")
 SNAP_OPTIONS = [1, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0]
 
 try:
@@ -49,12 +52,17 @@ class SvgCompassDial(QWidget):
         self.canvas = canvas
         self.value = 0.0   # ✅ float instead of int
         self.snap_origin = None
-        self.snap_increment = 22.5
+        self.press_angle = None
+        self.press_value = None
 
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
-        svg_path = os.path.join(plugin_dir, "north-point.svg")
         self._renderer = QSvgRenderer(svg_path)
+        
+        # Create a custom cursor for when we mouseover the north point
+        pixmap = QPixmap(cursor_path)
+        # hotspot = where the click point is within the image
+        self.rotate_cursor = QCursor(pixmap, 16, 16)  # centre for 32x32
 
     # ------------------------------------------------------------- #
     # Painting
@@ -84,6 +92,20 @@ class SvgCompassDial(QWidget):
         painter.end()
 
     # ------------------------------------------------------------- #
+    # Mouse cursor events
+    # ------------------------------------------------------------- #
+
+    def enterEvent(self, event):
+        # show a “grab” style cursor
+        self.setCursor(self.rotate_cursor)
+        event.accept()
+
+    def leaveEvent(self, event):
+        # restore default (important!)
+        self.unsetCursor()
+        event.accept()
+
+    # ------------------------------------------------------------- #
     # Input handling
     # ------------------------------------------------------------- #
 
@@ -93,16 +115,19 @@ class SvgCompassDial(QWidget):
             event.accept()
 
         if event.button() == QtLeftButton:
-            modifiers = event.modifiers()  # ✅ FIX: define it
-
-            # ✅ capture origin BEFORE any movement happens
-            if modifiers & Qt.ShiftModifier:
-                self.snap_origin = self.value
-            else:
-                self.snap_origin = None
-
-            # now apply movement
-            self._set_value_from_pos(event.pos(), modifiers)
+            self.setCursor(Qt.ClosedHandCursor)  # grabbing
+            pos = event.pos()
+            cx = self.width() / 2
+            cy = self.height() / 2
+            dx = pos.x() - cx
+            dy = cy - pos.y()
+            angle = math.degrees(math.atan2(dx, dy)) % 360
+            # ✅ store click direction
+            self.press_angle = angle
+            # ✅ store current rotation (updates when we rotate)
+            self.press_value = self.value
+            # ✅ need to keep a record of origin BEFORE any movement happens
+            self.snap_origin = self.value
             event.accept()
 
         else:
@@ -117,6 +142,7 @@ class SvgCompassDial(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() in (QtLeftButton, QtRightButton):
+            self.setCursor(Qt.OpenHandCursor)  # back to hover state
             self.snap_origin = None
             self.canvas.refresh() # actually re-render rather than just rotating the already rendered map
             event.accept()
@@ -145,10 +171,16 @@ class SvgCompassDial(QWidget):
 
         angle = math.degrees(math.atan2(dx, dy)) % 360
 
-        value = (-angle) % 360
+        # ✅ difference between where we clicked and where we are now
+        delta_angle = angle - self.press_angle
+        delta_angle = (delta_angle + 180) % 360 - 180
+
+        # ✅ apply that rotation to original value
+        value = self.press_value - delta_angle
+        value %= 360
 
         # ✅ relative snapping (float)
-        if modifiers & Qt.ShiftModifier and self.snap_origin is not None:
+        if modifiers & Qt.ShiftModifier:
 
             snap = self.snap_increment
 
@@ -168,7 +200,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         super().__init__()
         self.iface = iface
         self.canvas = self.iface.mapCanvas()
-        self.snap_increment = 15  # default
+        self.snap_increment = 22.5  # default
 
         # References to our UI elements
         self.container = None
@@ -185,7 +217,6 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         self.status_button.setAutoRaise(True)  # toolbar-style
 
         # ✅ Load your SVG
-        icon_path = os.path.join(plugin_dir, "icon.svg")
         self.status_button.setIcon(QIcon(icon_path))
 
         self.status_button.setToolTip("Toggle the interactive north point / Right-click to select snapping mode increment")

@@ -2,7 +2,7 @@
 name=Interactive North Point
 description=Clickable north point on map canvas for adjusting map rotation.
 about=Toggle display of north point on map canvas using status bar button.
-	To rotate map: click or drag the north point with left mouse button.
+	To rotate map: click and drag the north point with left mouse button.
 	Snapping mode: hold down shift to adjust by regular increments.  Right-click status bar button to select increment.
 	Reset: right-click the north point to reset rotation to 0°.
 version=1.2
