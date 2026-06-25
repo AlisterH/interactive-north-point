@@ -1,16 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Drop shadow -->
-  <circle cx="50" cy="51" r="44" fill="rgba(0,0,0,0.08)"/>
-  <!-- Background disc -->
-  <circle cx="50" cy="50" r="44" fill="white"/>
-  <!-- Bearing ring -->
-  <circle cx="50" cy="50" r="44" fill="none" stroke="#cccccc" stroke-width="1.5"/>
 
-  <!-- Compass needle, centred on origin for clean rotation -->
-  <!-- North half: red -->
+  <!-- ✅ White backing -->
+  <!-- North backing -->
+  <polygon points="50,5 57,50 50,49 43,50"
+           fill="white"/>
+
+  <!-- South backing -->
+  <polygon points="50,95 57,50 50,51 43,50"
+           fill="white"/>
+
+  <!-- ✅ Actual needle -->
+  <!-- North -->
   <polygon points="50,16 55,50 50,46 45,50"
            fill="#cc2222"/>
-  <!-- South half: dark grey -->
+
+  <!-- South -->
   <polygon points="50,84 55,50 50,54 45,50"
            fill="#444444"/>
 
@@ -18,12 +22,18 @@
   <circle cx="50" cy="50" r="4" fill="#333333"/>
   <circle cx="50" cy="50" r="2" fill="white"/>
 
-  <!-- "N" label, positioned above needle tip and rotated with it -->
-  <text x="50" y="16"
+  <!-- ✅ "N" backing (moved up and narrower) -->
+  <rect x="45.2" y="0"
+        width="9.6" height="10"
+        rx="2"
+        fill="white"/>
+
+  <!-- "N" label -->
+  <text x="50" y="8.3"
         text-anchor="middle"
-        dominant-baseline="auto"
         font-family="sans-serif"
         font-size="9"
         font-weight="bold"
         fill="#cc2222">N</text>
+
 </svg>

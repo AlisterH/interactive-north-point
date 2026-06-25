@@ -57,7 +57,9 @@ class SvgCompassDial(QWidget):
 
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
-        self._renderer = QSvgRenderer(svg_path)
+        #self._renderer = QSvgRenderer(svg_path)
+        # Doing it this way forces it to reload the svg if the plugin is reloaded
+        self._renderer = QSvgRenderer(open(svg_path, "rb").read())
         
         # Create a custom cursor for when we mouseover the north point
         pixmap = QPixmap(cursor_path)
