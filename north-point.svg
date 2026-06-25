@@ -2,20 +2,20 @@
 
   <!-- ✅ White backing -->
   <!-- North backing -->
-  <polygon points="50,5 57,50 50,49 43,50"
+  <polygon points="50,5 57,50 43,50"
            fill="white"/>
 
   <!-- South backing -->
-  <polygon points="50,95 57,50 50,51 43,50"
+  <polygon points="50,95 57,50 43,50"
            fill="white"/>
 
   <!-- ✅ Actual needle -->
   <!-- North -->
-  <polygon points="50,16 55,50 50,46 45,50"
+  <polygon points="50,16 55,50 45,50"
            fill="#cc2222"/>
 
   <!-- South -->
-  <polygon points="50,84 55,50 50,54 45,50"
+  <polygon points="50,84 55,50 45,50"
            fill="#444444"/>
 
   <!-- Centre boss -->

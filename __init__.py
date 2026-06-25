@@ -45,6 +45,8 @@ except AttributeError:
 
 class SvgCompassDial(QWidget):
     valueChanged = pyqtSignal(float)
+    deltaChanged = pyqtSignal(float)
+    interactionEnded = pyqtSignal()
 
     def __init__(self, canvas, parent=None):
         super().__init__(parent)
@@ -162,6 +164,7 @@ class SvgCompassDial(QWidget):
             self.press_angle = None
             self.press_value = None
             self.canvas.refresh() # actually re-render rather than just rotating the already rendered map
+            self.interactionEnded.emit() # clear status bar message
             event.accept()
         else:
             event.ignore()
@@ -189,26 +192,17 @@ class SvgCompassDial(QWidget):
         angle = math.degrees(math.atan2(dx, dy)) % 360
 
         # ✅ difference between where we clicked and where we are now
-        delta_angle = angle - self.press_angle
-        delta_angle = (delta_angle + 180) % 360 - 180
+        delta = (angle - self.press_angle + 180) % 360 - 180
 
-        # ✅ apply that rotation to original value
-        value = self.press_value - delta_angle
-        value %= 360
-
-        # ✅ relative snapping (float)
         if modifiers & Qt.ShiftModifier:
-
             snap = self.snap_increment
+            delta = round(delta / snap) * snap
 
-            delta = value - self.snap_origin
+        # print rotation to status bar
+        self.deltaChanged.emit(delta)
 
-            # keep delta continuous across 0°
-            delta = (delta + 180) % 360 - 180
-
-            snapped_delta = round(delta / snap) * snap
-
-            value = (self.snap_origin + snapped_delta) % 360
+        # ✅ apply the rotation to original value
+        value = (self.press_value - delta) % 360
 
         self.setValue(value)
 
@@ -348,6 +342,8 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         # Link signals
         self.dial.valueChanged.connect(self.rotate_map)
         self.canvas.rotationChanged.connect(self.update_dial_from_canvas)
+        self.dial.interactionEnded.connect(self.clear_status)
+        self.dial.deltaChanged.connect(self.update_status_delta)
 
         # Use an event filter to respond to canvas resizes instead of
         # monkey-patching resizeEvent on the shared canvas instance.
@@ -386,7 +382,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
 
         for angle in SNAP_OPTIONS:
             if angle == 1:
-                label = "1° (snap to nearest whole degree)"
+                label = "1° (snap map to nearest whole degree)"
             else:
                 label = f"{angle}°"
 
@@ -440,6 +436,13 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
             self.container.move(
                 self.canvas.width() - self.container.width() - 25, 25
             )
+    
+    def update_status_delta(self, delta):
+        msg = f"Δ {delta:.1f}°"
+        self.iface.statusBarIface().showMessage(msg)
+
+    def clear_status(self):
+        self.iface.statusBarIface().clearMessage()
 
 def classFactory(iface):
     """QGIS entry point — called by QGIS when the plugin is loaded."""
