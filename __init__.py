@@ -23,7 +23,7 @@
 
 from qgis.PyQt.QtWidgets import QWidget, QFrame, QVBoxLayout, QToolButton, QMenu, QAction
 from qgis.PyQt.QtCore import Qt, QEvent, QRectF, QObject, QSize, QTimer, pyqtSignal
-from qgis.PyQt.QtGui import QPainter, QIcon, QCursor, QPixmap
+from qgis.PyQt.QtGui import QPainter, QIcon, QCursor, QPixmap, QColor, QPen
 from qgis.PyQt.QtSvg import QSvgRenderer
 from qgis.core import QgsProject
 import math
@@ -48,7 +48,7 @@ class SvgCompassDial(QWidget):
     deltaChanged = pyqtSignal(float)
     interactionEnded = pyqtSignal()
 
-    def __init__(self, canvas, parent=None):
+    def __init__(self, canvas, iface, parent=None):
         super().__init__(parent)
 
         self.canvas = canvas
@@ -56,6 +56,9 @@ class SvgCompassDial(QWidget):
         self.snap_origin = None
         self.press_angle = None
         self.press_value = None
+        self.iface = iface
+        self._maptips_were_enabled = False
+        self.hovered = False
 
         # Pre-compile the SVG bytes once; QSvgRenderer reuses them on every
         # paintEvent without re-parsing.
@@ -85,6 +88,17 @@ class SvgCompassDial(QWidget):
 
         cx, cy = w / 2, h / 2
 
+        if self.hovered:
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing)
+
+            # soft white highlight and black outline
+            painter.setBrush(QColor(255, 255, 255, 30))
+            painter.setPen(QPen(QColor(0, 0, 0, 255), 1))
+            painter.drawRect(QRectF(0,0,w,h))
+
+            painter.restore()
+
         # ✅ draw shadow (only when dragging)
         if self.press_value is not None:
             painter.save()
@@ -113,13 +127,36 @@ class SvgCompassDial(QWidget):
     # ------------------------------------------------------------- #
 
     def enterEvent(self, event):
-        # show a “grab” style cursor
+        # show a “grab” style cursor and highlight the widget
         self.setCursor(self.rotate_cursor)
+        self.hovered = True
+        self.update()
+
+        # make sure map tips are disabled
+        action = self.iface.actionMapTips()
+
+        # ✅ store current state properly
+        self._maptips_were_enabled = action.isChecked()
+
+        if self._maptips_were_enabled:
+            action.trigger()   # toggle OFF
+
         event.accept()
 
     def leaveEvent(self, event):
         # restore default (important!)
         self.unsetCursor()
+        self.hovered = False
+        self.update()
+
+        action = self.iface.actionMapTips()
+
+        # ✅ restore only if we turned it off
+        if self._maptips_were_enabled:
+            action.trigger()
+
+        self._maptips_were_enabled = None
+
         event.accept()
 
     # ------------------------------------------------------------- #
@@ -326,7 +363,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         layout = QVBoxLayout(self.container)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.dial = SvgCompassDial(self.canvas, self.container)
+        self.dial = SvgCompassDial(self.canvas, self.iface, self.container)
         self.dial.snap_increment = self.snap_increment
         self.dial.setToolTip("Rotate map / Right-click to reset to 0° / Hold shift to rotate by regular increment")
         self.dial.setFixedSize(100, 100)
