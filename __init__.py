@@ -38,10 +38,19 @@ SNAP_OPTIONS = [1, 5.0, 10.0, 15.0, 22.5, 30.0, 45.0, 90.0]
 try:
     QtLeftButton = Qt.MouseButton.LeftButton #QT6
     QtRightButton = Qt.MouseButton.RightButton
+    context_menu = Qt.ContextMenuPolicy.CustomContextMenu
+    hint = QPainter.RenderHint.Antialiasing
+    resize_event = QEvent.Type.Resize
+    CLOSED_HAND = Qt.CursorShape.ClosedHandCursor
+    SHIFT_MOD = Qt.KeyboardModifier.ShiftModifier
 except AttributeError:
     QtLeftButton = Qt.LeftButton #QT5
     QtRightButton = Qt.RightButton
-
+    context_menu = Qt.CustomContextMenu
+    hint = QPainter.Antialiasing
+    resize_event = QEvent.Resize
+    CLOSED_HAND = Qt.ClosedHandCursor
+    SHIFT_MOD = Qt.ShiftModifier
 
 class SvgCompassDial(QWidget):
     valueChanged = pyqtSignal(float)
@@ -53,7 +62,6 @@ class SvgCompassDial(QWidget):
 
         self.canvas = canvas
         self.value = 0.0   # ✅ float instead of int
-        self.snap_origin = None
         self.press_angle = None
         self.press_value = None
         self.iface = iface
@@ -67,6 +75,8 @@ class SvgCompassDial(QWidget):
         # Create a custom cursor for when we mouseover the north point
         pixmap = QPixmap(cursor_path)
         # hotspot = where the click point is within the image
+        # AI says it would be better for HIDPI if we add this and provide a 64x64 icon as well
+        #pixmap.setDevicePixelRatio(self.devicePixelRatioF())
         self.rotate_cursor = QCursor(pixmap, 15, 13)  # centre for 32x32
 
     # ------------------------------------------------------------- #
@@ -75,12 +85,6 @@ class SvgCompassDial(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-
-        try:
-            hint = QPainter.RenderHint.Antialiasing # QT6
-        except AttributeError:
-            hint = QPainter.Antialiasing # QT5
-
         painter.setRenderHint(hint)
 
         w, h = self.width(), self.height()
@@ -90,7 +94,7 @@ class SvgCompassDial(QWidget):
 
         if self.hovered:
             painter.save()
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(hint)
 
             # soft white highlight and black outline
             painter.setBrush(QColor(255, 255, 255, 30))
@@ -127,7 +131,7 @@ class SvgCompassDial(QWidget):
     # ------------------------------------------------------------- #
 
     def enterEvent(self, event):
-        # show a “grab” style cursor and highlight the widget
+        # show our custom cursor and highlight the widget
         self.setCursor(self.rotate_cursor)
         self.hovered = True
         self.update()
@@ -169,7 +173,7 @@ class SvgCompassDial(QWidget):
             event.accept()
 
         if event.button() == QtLeftButton:
-            self.setCursor(Qt.ClosedHandCursor)  # grabbing
+            self.setCursor(CLOSED_HAND)  # grabbing
             pos = event.pos()
             cx = self.width() / 2
             cy = self.height() / 2
@@ -180,8 +184,6 @@ class SvgCompassDial(QWidget):
             self.press_angle = angle
             # ✅ store current rotation (updates when we rotate)
             self.press_value = self.value
-            # ✅ need to keep a record of origin BEFORE any movement happens
-            self.snap_origin = self.value
             event.accept()
 
         else:
@@ -196,8 +198,7 @@ class SvgCompassDial(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() in (QtLeftButton, QtRightButton):
-            self.setCursor(Qt.OpenHandCursor)  # back to hover state
-            self.snap_origin = None
+            self.setCursor(self.rotate_cursor)  # back to hover state
             self.press_angle = None
             self.press_value = None
             self.canvas.refresh() # actually re-render rather than just rotating the already rendered map
@@ -231,7 +232,7 @@ class SvgCompassDial(QWidget):
         # ✅ difference between where we clicked and where we are now
         delta = (angle - self.press_angle + 180) % 360 - 180
 
-        if modifiers & Qt.ShiftModifier:
+        if modifiers & SHIFT_MOD:
             snap = self.snap_increment
             delta = round(delta / snap) * snap
 
@@ -271,7 +272,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
         self.status_button.toggled.connect(self.toggle_widget)
         
         # Implement context menu to configure snapping mode snap increment
-        self.status_button.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.status_button.setContextMenuPolicy(context_menu)
         self.status_button.customContextMenuRequested.connect(self.show_snap_menu)
 
         # 2. Inject button into QGIS Status Bar
@@ -430,7 +431,10 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
             action.triggered.connect(lambda checked, a=angle: self.set_snap_increment(a))
             menu.addAction(action)
 
-        menu.exec_(self.status_button.mapToGlobal(pos))
+        try:
+            menu.exec(self.status_button.mapToGlobal(pos))   # Qt6
+        except AttributeError:
+            menu.exec_(self.status_button.mapToGlobal(pos))  # Qt5
 
     def set_snap_increment(self, value):
         self.snap_increment = value
@@ -443,13 +447,7 @@ class InteractiveNorthPlugin(QObject):  # Inherit QObject to support installEven
 
     def eventFilter(self, obj, event):
         """Intercept resize events on the map canvas to reposition our widget."""
-        try:
-            resize_event = QEvent.Type.Resize #QT6
-        except AttributeError:
-            resize_event = QEvent.Resize #QT5
-
         if obj is self.canvas and event.type() == resize_event:
-
             self.position_widget()
         return False  # Always let Qt continue normal event processing
 
